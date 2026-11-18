@@ -37,7 +37,19 @@ DoW2_MainMenuUltrawide.asi
 
 ## Mods
 
-The plugin works with mods as long as they don't change the menus in ways that interfere with the fix, for example by replacing the main menu's host screen with a differently built one. If a mod's menus look wrong with the plugin installed, remove the `.asi` file and open an issue naming the mod.
+The plugin works with mods as long as they don't change the menus in ways that interfere with the fix, for example by replacing the main menu's host screen with a differently built one. If a mod's menus look wrong with the plugin installed, remove the `.asi` file.
+
+## Screenshots
+
+Examples shown here additionally use [Elite Mod](https://www.moddb.com/mods/dawn-of-war-2-retribution-elite-mod)  
+Elite Mod - 3.2.1, including its assets, logos and associated work, remains the property of its respective authors and is not covered by this project's MIT license.
+
+Main Menu:
+![Main Menu](images/3440x1440_screenshot_1.png)
+
+Army Painter:
+![Army Painter](images/3440x1440_screenshot_2.png)
+
 
 ## Notes
 
