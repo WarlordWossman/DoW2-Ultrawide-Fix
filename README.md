@@ -50,6 +50,13 @@ Main Menu:
 Army Painter:
 ![Army Painter](images/3440x1440_screenshot_2.png)
 
+## Screenshots Campaign (version 1.2)
+
+Star Map:
+![Main Menu](images/3440x1440_screenshot_3.png)
+
+Campaign Wargear:
+![Main Menu](images/3440x1440_screenshot_4.png)
 
 ## Notes
 
