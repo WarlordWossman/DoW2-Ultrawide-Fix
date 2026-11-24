@@ -3,9 +3,9 @@
 User-facing install instructions are in [README.md](README.md). This file is for developers and
 reviewers: root cause, exact changes, addresses, safety guards and how to rebuild.
 
-A 1.5 KB ASI plugin that removes the 16:9 clipping from the main menu and the Army Painter on
-screens wider than 16:9 (e.g. 3440×1440). It patches two function pointers in memory at
-startup. **`DOW2.exe` on disk is not modified** (Steam restores modified exes on launch anyway).
+A 1.5 KB ASI plugin (v1.2) that removes the 16:9 clipping from the main menu, the Army Painter,
+the campaign sector map / wargear screens and the front-end chat window on screens wider than
+16:9 (e.g. 3440×1440). It patches five function pointers in memory at startup. **`DOW2.exe` on disk is not modified** (Steam restores modified exes on launch anyway).
 
 ## Symptoms it fixes
 
@@ -13,25 +13,30 @@ startup. **`DOW2.exe` on disk is not modified** (Steam restores modified exes on
 |---|---|---|
 | Main menu (and other screens hosted by the same front-end movie: public lobby, match browser, post-match stats …) | Centered 16:9 strip with black side bars. Campaign/Multiplayer buttons, gamertag and the logo are cut off at the bar edges but still clickable behind the bars. | Full width. The 3D backdrop fills the screen, and buttons, gamertag and logo sit at the real screen edges. |
 | Army Painter | Centered 16:9 strip. The army/unit selection panel is pushed left into the black bar. | Panel sits at the left screen edge, fully visible. |
+| Campaign sector map (`WarRoomStarmap`) and wargear screen (`WarRoomInventory`), all factions *(v1.1)* | Centered 16:9 strip with black side bars. | Full width; side panels at the real screen edges. |
+| Front-end chat window (`ChatChannelsPanel`) *(v1.2)* | On the campaign screens the chat is shifted toward the screen edge (`Receive_SetMarkerXOffset`) and cut at the 16:9 boundary. | Fully visible. Its position on the main menu is unchanged. |
 
 The fix does nothing on 16:9, 16:10 or 4:3 screens, in matches, on the HUD, or in other menus. It
 was tested in a custom match vs CPU, the main menu, the public lobby, the match browser, the
-post-match stats and the Army Painter on 3440×1440.
+post-match stats and the Army Painter on 3440×1440. The v1.1 campaign screens were confirmed in-game
+as well; the v1.2 chat fix uses the identical mechanism.
 
 ## Root cause
 
 * Each Scaleform screen has a virtual `ComputeViewport(W, H, uiScale, &x, &y, &w, &h)` (vtable
   slot 6, called from `0x682070` on show/resize). For the front-end host (`FormManager`,
   movie `front_end_fullscreen_display.gfx`) and `ArmyPainter`, the original fits the 2134×1200
-  stage to screen height and **centers a 16:9 viewport** (`x = (W - w)/2`). Scaleform clips
+  stage to screen height and **centers a 16:9 viewport** (`x = (W - w)/2`). `WarRoomStarmap` and
+  `WarRoomInventory` use copies of the `ArmyPainter` function. Scaleform clips
   to the viewport, which produces the bars.
-* The menus are already built for wider screens. `MainMenuForm` and `ArmyPainter` call
+* The menus are already built for wider screens. `MainMenuForm`, `ArmyPainter`, `WarRoomStarmap`
+  and `WarRoomInventory` call
   `Receive_SetXOffset(x / scale)` on their movies, which moves the side panels out to the
   real screen edges. Those edges lie **outside** the 16:9 viewport, so they get clipped.
 
 ## What the plugin changes
 
-It wraps both `ComputeViewport` methods. It calls the original first, so `Receive_SetXOffset`
+It wraps these five `ComputeViewport` methods. It calls the original first, so `Receive_SetXOffset`
 etc. still run. Then, **only if `x > 0`**:
 
 ```
@@ -47,9 +52,39 @@ after the movie has loaded, so it wins.)
 | Item | Address (this exe build) |
 |---|---|
 | `FormManager::vftable[6]` → original | `0x01090FFC` → `0x004A36FC` |
+| `ChatChannelsPanel::vftable[6]` → original | `0x010981CC` → `0x004A36FC` (shared) |
 | `ArmyPainter::vftable[6]` → original | `0x01097610` → `0x00495B56` |
+| `WarRoomStarmap::vftable[6]` → original | `0x0109AB00` → `0x004BB746` |
+| `WarRoomInventory::vftable[6]` → original | `0x01099DFC` → `0x004B0D02` |
 | `GFxMovieRoot::vftable` / `ViewScaleMode` field | `0x0104BBFC` / `+0x80` |
 | panel → movie pointer | `panel + 0x4` |
+
+## Campaign war room (v1.1)
+
+The war room is a stack of separate Scaleform panels. Only two clamp to a centered 16:9 viewport,
+and only those two are hooked:
+
+| Panel | Original layout | Hooked |
+|---|---|---|
+| `WarRoomStarmap`, `WarRoomInventory` | centered 16:9 + `Receive_SetXOffset` | yes |
+| `WarRoomSquadTabs`, `WarRoomBriefing`, `WarRoomTalkingHead`, `WarRoomEventCues`, `WarRoomSquadDeployment` | anchored to the real left/right screen edge | no |
+| `WarRoomExitMenu`, `WarRoomMissionRewardDialog`, `WarRoomTutorial`, `WarRoomWaitingForPanel` | intentionally centered popups | no |
+| `WarRoomTrainerPanel`, `WarRoomUIDimmer` | already full width | no |
+
+`WarRoomInventory` sets `exactFit` once, in its constructor, before layout runs, so the showAll
+override wins as it does for the main menu. `WarRoomStarmap` also forwards its offset to the chat
+panel (`Receive_SetMarkerXOffset`). That value is computed by the original function before the
+wrapper runs, so it is unchanged.
+
+## Known cosmetic side effect: content parked outside the 16:9 stage
+
+Some screens park elements just outside the 16:9 stage so that they are invisible until they
+animate in. With the clipping removed, such elements can show as a sliver at the screen edge.
+Example: on the campaign **faction selection** screen (`CampaignSelectionForm`, which gets no
+layout offset from the exe), the name/difficulty panel rests just beyond the stage's right
+edge and slides in once a faction is picked. On 16:9 it is fully hidden until then; on
+ultrawide, part of it is visible at the right edge beforehand. This is left as is: hiding it
+would require editing that screen's movie file, which this plugin deliberately avoids.
 
 ## Safety guards
 
@@ -92,8 +127,9 @@ license notice are included (ship the loader's `LICENSE` file alongside).
 * `README.md`: user-facing description and install steps.
 * `TECHNICAL.md`: this file.
 * `LICENSE`: MIT license for this project.
+* `CHANGELOG.md`: version history.
 * `bin/DoW2_MainMenuUltrawide.asi`: the plugin (SHA-256
-  `1454be3d4f2fcff20cb1054516b18ecbcbb43572737018747cbc7b163459685c`).
+  `34c1c41ee4ed827ba09103d7961ea0b21834588f6aaecef5b74362135e59b736`).
 * `src/DoW2_MainMenuUltrawide.s`: full commented source (GNU as, Intel syntax).
 * `src/build_dll.py`: wraps the assembled code into a minimal PE DLL.
 * `src/build.sh`: reproduces the binary byte-for-byte:

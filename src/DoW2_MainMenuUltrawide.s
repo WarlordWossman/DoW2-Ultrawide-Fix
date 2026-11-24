@@ -1,5 +1,5 @@
 # =====================================================================================
-#  DoW2_MainMenuUltrawide.asi  —  ultrawide fix for the DoW2: Retribution front end
+#  DoW2_MainMenuUltrawide.asi  v1.2  —  ultrawide fix for DoW2: Retribution menus
 # =====================================================================================
 #
 #  Target   : DOW2.exe, Steam build, PE TimeDateStamp 0x57080767 (2016-04-08),
@@ -7,8 +7,11 @@
 #  Loader   : Ultimate ASI Loader (ThirteenAG), e.g. as msacm32.dll next to DOW2.exe.
 #  Effect   : On screens wider than 16:9, two front-end Scaleform hosts get a full-width
 #             viewport and "showAll" scaling instead of a centered 16:9 viewport:
-#               - FormManager  (front_end_fullscreen_display: main menu, lobby, browser, stats ...)
-#               - ArmyPainter  (army_painter)
+#               - FormManager      (front_end_fullscreen_display: main menu, lobby, browser, stats ...)
+#               - ArmyPainter      (army_painter)
+#               - WarRoomStarmap   (campaign sector map)                         [v1.1]
+#               - WarRoomInventory (campaign wargear / equipment screen)         [v1.1]
+#               - ChatChannelsPanel (front-end chat window)                     [v1.2]
 #             Nothing else is touched: no gameplay/HUD code, no files on disk.
 #
 #  Background
@@ -22,7 +25,8 @@
 #
 #  On entry *w,*h hold the movie's authored stage size (2134 x 1200 for these hosts). The
 #  originals (0x4A36FC for FormManager, 0x495B56 for ArmyPainter) scale that to screen
-#  height and centre it, i.e. a 16:9 viewport with x = (screenW - w) / 2. Scaleform clips
+#  height and centre it, i.e. a 16:9 viewport with x = (screenW - w) / 2. WarRoomStarmap
+#  (0x4BB746) and WarRoomInventory (0x4B0D02) are copies of the ArmyPainter version. Scaleform clips
 #  to the viewport, so on 21:9 everything outside the middle 16:9 strip is cut off — the
 #  black bars.
 #
@@ -68,6 +72,11 @@
 .set FORMMANAGER_ORIG,     0x004A36FC     #  FormManager::ComputeViewport
 .set ARMYPAINTER_SLOT,     0x01097610     # &ArmyPainter::vftable[6]
 .set ARMYPAINTER_ORIG,     0x00495B56     #  ArmyPainter::ComputeViewport
+.set CHAT_SLOT,            0x010981CC     # &ChatChannelsPanel::vftable[6] (same original as FormManager)
+.set STARMAP_SLOT,         0x0109AB00     # &WarRoomStarmap::vftable[6]
+.set STARMAP_ORIG,         0x004BB746     #  WarRoomStarmap::ComputeViewport
+.set INVENTORY_SLOT,       0x01099DFC     # &WarRoomInventory::vftable[6]
+.set INVENTORY_ORIG,       0x004B0D02     #  WarRoomInventory::ComputeViewport
 
 .set GFXMOVIEROOT_VFTABLE, 0x0104BBFC     # GFxMovieRoot::vftable (Scaleform 2.x)
 .set GFX_VIEWSCALEMODE,    0x80           # GFxMovieRoot::ViewScaleMode field offset
@@ -104,14 +113,26 @@ dllmain:
   cmp dword ptr [eax+EXE_LFANEW+0x50], EXE_SIZEOFIMAGE
   jne dm_done
 
-  # --- Redirect the two vtable slots (each only if it still holds the original) ---
+  # --- Redirect the vtable slots (each only if it still holds the original) ---
   mov edi, FORMMANAGER_SLOT
   mov edx, FORMMANAGER_ORIG
   lea eax, [ebx + (hook_formmanager - 1b)]
   call patch_slot
+  mov edi, CHAT_SLOT                        # front-end chat: shares FormManager's layout function
+  mov edx, FORMMANAGER_ORIG
+  lea eax, [ebx + (hook_chatchannels - 1b)]
+  call patch_slot
   mov edi, ARMYPAINTER_SLOT
   mov edx, ARMYPAINTER_ORIG
   lea eax, [ebx + (hook_armypainter - 1b)]
+  call patch_slot
+  mov edi, STARMAP_SLOT
+  mov edx, STARMAP_ORIG
+  lea eax, [ebx + (hook_starmap - 1b)]
+  call patch_slot
+  mov edi, INVENTORY_SLOT
+  mov edx, INVENTORY_ORIG
+  lea eax, [ebx + (hook_inventory - 1b)]
   call patch_slot
 dm_done:
   pop edi
@@ -153,10 +174,17 @@ ps_ret:
 #  void __thiscall hook(int W, int H, float scale, int* x, int* y, int* w, int* h)  ret 0x1C
 # =====================================================================================
 hook_formmanager:
+hook_chatchannels:                          # same original function (0x4A36FC)
   mov eax, FORMMANAGER_ORIG
   jmp hook_common
 hook_armypainter:
   mov eax, ARMYPAINTER_ORIG
+  jmp hook_common
+hook_starmap:
+  mov eax, STARMAP_ORIG
+  jmp hook_common
+hook_inventory:
+  mov eax, INVENTORY_ORIG
 hook_common:
   push esi
   push edi
